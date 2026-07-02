@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:background="#D9000000"
+    android:orientation="vertical"
+    android:padding="12dp"
+    android:backgroundTint="#222222">
+
+    <EditText
+        android:id="@+id/et_speed"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:hint="Speed (ms)"
+        android:inputType="number"
+        android:text="150"
+        android:textColor="#FFFFFF"
+        android:textColorHint="#888888" />
+
+    <EditText
+        android:id="@+id/et_target_num"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:hint="Target Angka"
+        android:inputType="number"
+        android:textColor="#FFFFFF"
+        android:textColorHint="#888888" />
+
+    <Button
+        android:id="@+id/btn_start"
+        android:layout_width="120dp"
+        android:layout_height="wrap_content"
+        android:backgroundTint="#FF3366"
+        android:text="START"
+        android:textColor="#FFFFFF" />
+</LinearLayout>

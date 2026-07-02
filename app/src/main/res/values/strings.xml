@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Auto Clicker Pintar</string>
+    <string name="accessibility_description">Aplikasi ini digunakan untuk mendeteksi target angka secara otomatis pada layar dan melakukan simulasi klik pintar tanpa ghost touch.</string>
+</resources>
