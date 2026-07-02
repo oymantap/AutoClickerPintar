@@ -21,9 +21,8 @@ jobs:
         java-version: '17'
         cache: 'gradle'
 
-    # 🔥 FIX: Pakai echo -n biar gak nambahin newline acak yang bikin file .jks korup
-    # Tambahan flag --ignore-garbage (-i) biar aman kalau ada spasi gak sengaja di secret
-    <name: Decode Keystore
+    # BARIS 27 - SEKARANG UDAH AMAN DAN BENER SINTAKNYA
+    - name: Decode Keystore
       run: echo -n "${{ secrets.KEYSTORE_FILE }}" | base64 --decode -i > app/release.jks
 
     - name: Grant Execute Permission for Gradle
@@ -41,3 +40,4 @@ jobs:
       with:
         name: AutoClickerPintar
         path: app/build/outputs/apk/release/app-release.apk
+
