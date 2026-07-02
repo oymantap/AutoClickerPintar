@@ -3,11 +3,11 @@
     android:layout_width="wrap_content"
     android:layout_height="wrap_content">
 
-    <ImageView
-        android:id="@+id/iv_target_icon"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:src="@drawable/ic_target" />
+<ImageView
+    android:id="@+id/ic_target"
+    android:layout_width="48dp"
+    android:layout_height="48dp"
+    android:src="@drawable/ic_target" />
 
     <TextView
         android:id="@+id/tv_target_number"
