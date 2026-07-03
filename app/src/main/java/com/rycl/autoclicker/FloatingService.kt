@@ -21,8 +21,6 @@ class FloatingService : Service() {
     private lateinit var windowManager: WindowManager
     private lateinit var panelView: View
     private lateinit var panelParams: WindowManager.LayoutParams
-    
-    // List untuk nampung maksimal 10 target pointer
     private val targetList = ArrayList<View>()
 
     companion object {
@@ -35,7 +33,6 @@ class FloatingService : Service() {
         super.onCreate()
         instance = this
         windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        
         setupControlPanel()
     }
 
@@ -43,12 +40,12 @@ class FloatingService : Service() {
     private fun setupControlPanel() {
         panelView = LayoutInflater.from(this).inflate(R.layout.floating_widget, null)
 
-        // Default awal pake FLAG_NOT_FOCUSABLE biar bisa nembus klik ke app bawahnya
+        // Supaya EditText responsif dan keyboard langsung muncul tanpa delay
         panelParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -56,35 +53,41 @@ class FloatingService : Service() {
             y = 100
         }
 
-        // Trik Keyboard Aktif: Jika kolom input disentuh, ganti flag agar fokus
         val inputSpeed = panelView.findViewById<EditText>(R.id.et_speed)
         val inputTarget = panelView.findViewById<EditText>(R.id.et_target_num)
-        
-        val focusTouchListener = View.OnTouchListener { _, _ ->
-            if ((panelParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
-                panelParams.flags = panelParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+
+        // SOLUSI KEYBOARD: Kalau user klik di luar widget, lepas fokus biar bisa interaksi sama game/layar bawah
+        panelView.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_OUTSIDE) {
+                panelView.clearFocus()
+                panelParams.flags = panelParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 windowManager.updateViewLayout(panelView, panelParams)
             }
             false
         }
-        inputSpeed.setOnTouchListener(focusTouchListener)
-        inputTarget.setOnTouchListener(focusTouchListener)
 
-        // Logika Drag/Geser Control Panel Utama via handle atas
-        val dragHandle = panelView.findViewById<View>(R.id.panel_drag_handle)
-        dragHandle.setOnTouchListener(object : View.OnTouchListener {
+        // Kalau kolom input diklik, paksa window manager buat minta fokus penuh ke keyboard
+        val textFocusListener = View.OnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                panelParams.flags = panelParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+                windowManager.updateViewLayout(panelView, panelParams)
+            }
+        }
+        inputSpeed.onFocusChangeListener = textFocusListener
+        inputTarget.onFocusChangeListener = textFocusListener
+
+        // SOLUSI GESER KAKU: Sekarang SELURUH BADAN PANEL (bukan cuma atasnya) bisa digeser bebas
+        val mainLayout = panelView.findViewById<View>(R.id.panel_main_layout)
+        mainLayout.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
             private var initialY = 0
             private var initialTouchX = 0f
             private var initialTouchY = 0f
 
             override fun onTouch(v: View?, event: MotionEvent): Boolean {
-                // Kembalikan ke mode default focus saat geser panel biar gak ganggu layar bawah
-                if ((panelParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) == 0) {
-                    panelParams.flags = panelParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-                    windowManager.updateViewLayout(panelView, panelParams)
-                }
-                
+                // Jangan ganggu geser kalau user lagi fokus ngetik di kolom input
+                if (inputSpeed.isFocused || inputTarget.isFocused) return false
+
                 when (event.action) {
                     MotionEvent.ACTION_DOWN -> {
                         initialX = panelParams.x
@@ -106,9 +109,7 @@ class FloatingService : Service() {
 
         // Aksi Tombol Tambah Target (+)
         panelView.findViewById<Button>(R.id.btn_add_target).setOnClickListener {
-            if (targetList.size < 10) {
-                addNewTargetPointer()
-            }
+            if (targetList.size < 10) addNewTargetPointer()
         }
 
         // Aksi Tombol Kurang Target (-)
@@ -124,32 +125,34 @@ class FloatingService : Service() {
         btnStart.setOnClickListener {
             if (!ClickerService.isRunning) {
                 if (targetList.isEmpty()) return@setOnClickListener
-                
-                ClickerService.clickSpeedMs = inputSpeed.text.toString().toLongOrNull() ?: 200L
+
+                ClickerService.clickSpeedMs = inputSpeed.text.toString().toLongOrNull() ?: 300L
                 ClickerService.targetNumber = inputTarget.text.toString().takeIf { it.isNotEmpty() }
-                
-                // Ambil koordinat x, y dari seluruh target yang udah diletakkan user
+
                 val coordinates = ArrayList<Pair<Float, Float>>()
                 for (target in targetList) {
                     val params = target.layoutParams as WindowManager.LayoutParams
-                    // Ambil titik tengah target bulat (ukuran 48dp -> offset sekitar 24dp)
-                    val centerX = params.x + (target.width / 2).toFloat()
-                    val centerY = params.y + (target.height / 2).toFloat()
+                    // FIX AKURASI KOORDINAT: Ditambah offset pas 24dp (tengah lingkaran diameter 48dp)
+                    val centerX = params.x + 72f  // Konversi 24dp ke piksel di layar standar rata-rata
+                    val centerY = params.y + 72f
                     coordinates.add(Pair(centerX, centerY))
                 }
 
                 ClickerService.isRunning = true
                 btnStart.text = "STOP"
                 btnStart.setBackgroundColor(0xFFFF3366.toInt())
+                
+                // Lepaskan fokus panel saat start agar klik tembus lancar ke bawah
+                panelView.clearFocus()
+                panelParams.flags = panelParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                windowManager.updateViewLayout(panelView, panelParams)
 
-                // Jalankan rantai eksekusi multi-target
                 ClickerService.instance?.startMultiClicking(coordinates)
             } else {
                 stopClicking()
             }
         }
 
-        // Tombol Close total widget melayang
         panelView.findViewById<Button>(R.id.btn_close_panel).setOnClickListener {
             stopSelf()
         }
@@ -161,7 +164,6 @@ class FloatingService : Service() {
     private fun addNewTargetPointer() {
         val targetView = LayoutInflater.from(this).inflate(R.layout.target_pointer_layout, null)
         val index = targetList.size + 1
-        
         targetView.findViewById<TextView>(R.id.tv_target_number).text = index.toString()
 
         val pointerParams = WindowManager.LayoutParams(
@@ -172,11 +174,10 @@ class FloatingService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 300 + (index * 40) // Biar letak awal gak tumpang tindih total
-            y = 500
+            x = 300 + (index * 50)
+            y = 600
         }
 
-        // Bikin pointer ini bisa diseret bebas ke mana aja di layar game
         targetView.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
             private var initialY = 0
@@ -218,9 +219,7 @@ class FloatingService : Service() {
         super.onDestroy()
         ClickerService.isRunning = false
         if (::panelView.isInitialized) windowManager.removeView(panelView)
-        for (target in targetList) {
-            windowManager.removeView(target)
-        }
+        for (target in targetList) windowManager.removeView(target)
         targetList.clear()
         instance = null
     }

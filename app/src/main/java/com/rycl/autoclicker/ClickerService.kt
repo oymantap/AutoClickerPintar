@@ -3,15 +3,19 @@ package com.rycl.autoclicker
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.os.Handler
+import android.os.Looper
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 
 class ClickerService : AccessibilityService() {
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     companion object {
         var instance: ClickerService? = null
         var isRunning = false
-        var clickSpeedMs: Long = 200
+        var clickSpeedMs: Long = 300
         var targetNumber: String? = null
     }
 
@@ -21,29 +25,37 @@ class ClickerService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Pemindaian pintar secara periodik lewat node layout pohon layar aktif
-        if (isRunning && targetNumber != null) {
-            val rootNode = rootInActiveWindow ?: return
-            checkNodesForTarget(rootNode)
-        }
+        // Dikosongkan! Kita bypass deteksi event bawaan biar gak bikin HP patah-patah
     }
 
-    private fun checkNodesForTarget(node: AccessibilityNodeInfo) {
-        if (!isRunning) return
-        if (node.text != null && node.text.toString().contains(targetNumber!!)) {
-            // Target angka ditemukan di layar! Berhenti sekarang agar tidak kelewat/rugi
+    // Fungsi scan layout mandiri yang dipanggil terjadwal setiap selesai mengeklik
+    private fun scanScreenForTarget() {
+        if (!isRunning || targetNumber == null) return
+        
+        val rootNode = rootInActiveWindow ?: return
+        if (checkNodes(rootNode)) {
             isRunning = false
-            android.os.Handler(mainLooper).post {
+            mainHandler.post {
                 FloatingService.instance?.stopClicking()
             }
-            return
-        }
-        for (i in 0 until node.childCount) {
-            node.getChild(i)?.let { checkNodesForTarget(it) }
         }
     }
 
-    // Fungsi pemicu eksekusi multi-target sequensial
+    private fun checkNodes(node: AccessibilityNodeInfo?): Boolean {
+        if (node == null || !isRunning) return false
+        
+        if (node.text != null && node.text.toString().contains(targetNumber!!)) {
+            return true
+        }
+        
+        for (i in 0 until node.childCount) {
+            if (checkNodes(node.getChild(i))) {
+                return true
+            }
+        }
+        return false
+    }
+
     fun startMultiClicking(coords: List<Pair<Float, Float>>) {
         if (coords.isEmpty()) return
         executeSequenceLoop(coords, 0)
@@ -57,14 +69,17 @@ class ClickerService : AccessibilityService() {
 
         val path = Path().apply { moveTo(x, y) }
         val gestureBuilder = GestureDescription.Builder()
-        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 40))
+        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 50))
 
         dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
                 super.onCompleted(gestureDescription)
-                
-                // Berikan jeda antar urutan sesuai input speed agar aman dari ghost touch
-                android.os.Handler(mainLooper).postDelayed({
+
+                // Jalankan deteksi angka tepat setelah klik dieksekusi
+                scanScreenForTarget()
+
+                // Jeda berkala anti ghost touch & ramah memori CPU
+                mainHandler.postDelayed({
                     if (isRunning) {
                         executeSequenceLoop(coords, targetIdx + 1)
                     }

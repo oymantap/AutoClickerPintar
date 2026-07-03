@@ -1,18 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/panel_main_layout"
     android:layout_width="wrap_content"
     android:layout_height="wrap_content"
     android:background="#FA1A1A1A"
-    android:elevation="8dp"
     android:orientation="vertical"
-    android:padding="10dp">
+    android:padding="12dp">
 
-    <View
-        android:id="@+id/panel_drag_handle"
+    <TextView
         android:layout_width="match_parent"
-        android:layout_height="12dp"
-        android:background="#33FFFFFF"
-        android:layout_marginBottom="8dp" />
+        android:layout_height="wrap_content"
+        android:text="::: RYCL PANEL (DRAG HERE) :::"
+        android:textColor="#88FFFFFF"
+        android:textSize="10sp"
+        android:gravity="center"
+        android:layout_marginBottom="6dp"/>
 
     <EditText
         android:id="@+id/et_speed"
@@ -20,7 +22,7 @@
         android:layout_height="wrap_content"
         android:hint="Jeda (ms)"
         android:inputType="number"
-        android:text="200"
+        android:text="300"
         android:textColor="#FFFFFF"
         android:textColorHint="#666666"
         android:textSize="14sp" />
