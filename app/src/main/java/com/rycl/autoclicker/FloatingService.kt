@@ -40,12 +40,12 @@ class FloatingService : Service() {
     private fun setupControlPanel() {
         panelView = LayoutInflater.from(this).inflate(R.layout.floating_widget, null)
 
-        // Supaya EditText responsif dan keyboard langsung muncul tanpa delay
+        // Gunakan FLAG_NOT_FOCUSABLE sebagai basis utama agar klik tembus dari awal
         panelParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY else WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -56,27 +56,30 @@ class FloatingService : Service() {
         val inputSpeed = panelView.findViewById<EditText>(R.id.et_speed)
         val inputTarget = panelView.findViewById<EditText>(R.id.et_target_num)
 
-        // SOLUSI KEYBOARD: Kalau user klik di luar widget, lepas fokus biar bisa interaksi sama game/layar bawah
-        panelView.setOnTouchListener { _, event ->
-            if (event.action == MotionEvent.ACTION_OUTSIDE) {
-                panelView.clearFocus()
-                panelParams.flags = panelParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        // Jika kolom input ditekan, lepas flag NOT_FOCUSABLE agar keyboard langsung pop-up resmi
+        val touchFocusListener = View.OnTouchListener { _, _ ->
+            if ((panelParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) != 0) {
+                panelParams.flags = panelParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
                 windowManager.updateViewLayout(panelView, panelParams)
             }
             false
         }
+        inputSpeed.setOnTouchListener(touchFocusListener)
+        inputTarget.setOnTouchListener(touchFocusListener)
 
-        // Kalau kolom input diklik, paksa window manager buat minta fokus penuh ke keyboard
-        val textFocusListener = View.OnFocusChangeListener { _, hasFocus ->
-            if (hasFocus) {
-                panelParams.flags = panelParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                windowManager.updateViewLayout(panelView, panelParams)
+        // Jika klik di luar area widget, langsung kembalikan fokus ke sistem/aplikasi bawah
+        panelView.setOnTouchListener { _, event ->
+            if (event.action == MotionEvent.ACTION_OUTSIDE || event.action == MotionEvent.ACTION_DOWN) {
+                if ((panelParams.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE) == 0) {
+                    panelView.clearFocus()
+                    panelParams.flags = panelParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                    windowManager.updateViewLayout(panelView, panelParams)
+                }
             }
+            false
         }
-        inputSpeed.onFocusChangeListener = textFocusListener
-        inputTarget.onFocusChangeListener = textFocusListener
 
-        // SOLUSI GESER KAKU: Sekarang SELURUH BADAN PANEL (bukan cuma atasnya) bisa digeser bebas
+        // Geser seluruh bagian panel kontrol
         val mainLayout = panelView.findViewById<View>(R.id.panel_main_layout)
         mainLayout.setOnTouchListener(object : View.OnTouchListener {
             private var initialX = 0
@@ -85,7 +88,6 @@ class FloatingService : Service() {
             private var initialTouchY = 0f
 
             override fun onTouch(v: View?, event: MotionEvent): Boolean {
-                // Jangan ganggu geser kalau user lagi fokus ngetik di kolom input
                 if (inputSpeed.isFocused || inputTarget.isFocused) return false
 
                 when (event.action) {
@@ -107,12 +109,10 @@ class FloatingService : Service() {
             }
         })
 
-        // Aksi Tombol Tambah Target (+)
         panelView.findViewById<Button>(R.id.btn_add_target).setOnClickListener {
             if (targetList.size < 10) addNewTargetPointer()
         }
 
-        // Aksi Tombol Kurang Target (-)
         panelView.findViewById<Button>(R.id.btn_remove_target).setOnClickListener {
             if (targetList.isNotEmpty()) {
                 val lastTarget = targetList.removeAt(targetList.size - 1)
@@ -120,7 +120,6 @@ class FloatingService : Service() {
             }
         }
 
-        // Aksi Tombol Start/Stop
         val btnStart = panelView.findViewById<Button>(R.id.btn_start)
         btnStart.setOnClickListener {
             if (!ClickerService.isRunning) {
@@ -132,17 +131,16 @@ class FloatingService : Service() {
                 val coordinates = ArrayList<Pair<Float, Float>>()
                 for (target in targetList) {
                     val params = target.layoutParams as WindowManager.LayoutParams
-                    // FIX AKURASI KOORDINAT: Ditambah offset pas 24dp (tengah lingkaran diameter 48dp)
-                    val centerX = params.x + 72f  // Konversi 24dp ke piksel di layar standar rata-rata
+                    // Ambil koordinat aslinya secara presisi
+                    val centerX = params.x + 72f  
                     val centerY = params.y + 72f
                     coordinates.add(Pair(centerX, centerY))
                 }
 
-                ClickerService.isRunning = true
                 btnStart.text = "STOP"
                 btnStart.setBackgroundColor(0xFFFF3366.toInt())
                 
-                // Lepaskan fokus panel saat start agar klik tembus lancar ke bawah
+                // PAKSA BERSIHKAN FOKUS SEBELUM NYALAKAN SERVICE
                 panelView.clearFocus()
                 panelParams.flags = panelParams.flags or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                 windowManager.updateViewLayout(panelView, panelParams)
@@ -174,7 +172,7 @@ class FloatingService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 300 + (index * 50)
+            x = 300 + (index * 60)
             y = 600
         }
 

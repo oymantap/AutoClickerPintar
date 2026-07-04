@@ -25,13 +25,13 @@ class ClickerService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Dikosongkan! Kita bypass deteksi event bawaan biar gak bikin HP patah-patah
+        // Dikosongkan agar ramah CPU
     }
 
-    // Fungsi scan layout mandiri yang dipanggil terjadwal setiap selesai mengeklik
     private fun scanScreenForTarget() {
         if (!isRunning || targetNumber == null) return
         
+        // Menggunakan rootInActiveWindow secara aman tanpa memutus siklus loop
         val rootNode = rootInActiveWindow ?: return
         if (checkNodes(rootNode)) {
             isRunning = false
@@ -58,6 +58,7 @@ class ClickerService : AccessibilityService() {
 
     fun startMultiClicking(coords: List<Pair<Float, Float>>) {
         if (coords.isEmpty()) return
+        isRunning = true
         executeSequenceLoop(coords, 0)
     }
 
@@ -69,21 +70,31 @@ class ClickerService : AccessibilityService() {
 
         val path = Path().apply { moveTo(x, y) }
         val gestureBuilder = GestureDescription.Builder()
-        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 50))
+        
+        // Gunakan durasi standar stroke yang pas (40ms) agar dikenali OS Android sebagai sentuhan fisik
+        gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 40))
 
         dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
                 super.onCompleted(gestureDescription)
 
-                // Jalankan deteksi angka tepat setelah klik dieksekusi
+                // Scan dijalankan secara pararel tanpa memblokir thread
                 scanScreenForTarget()
 
-                // Jeda berkala anti ghost touch & ramah memori CPU
+                // Paksa penjadwalan ulang ke target berikutnya
                 mainHandler.postDelayed({
-                    if (isRunning) {
-                        executeSequenceLoop(coords, targetIdx + 1)
-                    }
+                    executeSequenceLoop(coords, targetIdx + 1)
                 }, clickSpeedMs)
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                super.onCancelled(gestureDescription)
+                // Jika dibatalkan sistem, tetap paksa coba jalankan target berikutnya agar tidak mogok total
+                if (isRunning) {
+                    mainHandler.postDelayed({
+                        executeSequenceLoop(coords, targetIdx + 1)
+                    }, clickSpeedMs)
+                }
             }
         }, null)
     }
