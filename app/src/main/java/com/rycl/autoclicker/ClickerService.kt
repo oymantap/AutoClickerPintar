@@ -30,8 +30,6 @@ class ClickerService : AccessibilityService() {
 
     private fun scanScreenForTarget() {
         if (!isRunning || targetNumber == null) return
-        
-        // Menggunakan rootInActiveWindow secara aman tanpa memutus siklus loop
         val rootNode = rootInActiveWindow ?: return
         if (checkNodes(rootNode)) {
             isRunning = false
@@ -68,20 +66,21 @@ class ClickerService : AccessibilityService() {
         val targetIdx = if (currentIndex >= coords.size) 0 else currentIndex
         val (x, y) = coords[targetIdx]
 
-        val path = Path().apply { moveTo(x, y) }
+        // Validasi koordinat dasar (mencegah crash koordinat minus)
+        val safeX = if (x < 0) 0f else x
+        val safeY = if (y < 0) 0f else y
+
+        val path = Path().apply { moveTo(safeX, safeY) }
         val gestureBuilder = GestureDescription.Builder()
-        
-        // Gunakan durasi standar stroke yang pas (40ms) agar dikenali OS Android sebagai sentuhan fisik
         gestureBuilder.addStroke(GestureDescription.StrokeDescription(path, 0, 40))
 
-        dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
+        // Eksekusi gesture dan tangkap statusnya langsung
+        val isDispatched = dispatchGesture(gestureBuilder.build(), object : GestureResultCallback() {
             override fun onCompleted(gestureDescription: GestureDescription?) {
                 super.onCompleted(gestureDescription)
-
-                // Scan dijalankan secara pararel tanpa memblokir thread
                 scanScreenForTarget()
-
-                // Paksa penjadwalan ulang ke target berikutnya
+                
+                // Lanjut ke loop berikutnya jika sukses
                 mainHandler.postDelayed({
                     executeSequenceLoop(coords, targetIdx + 1)
                 }, clickSpeedMs)
@@ -89,14 +88,20 @@ class ClickerService : AccessibilityService() {
 
             override fun onCancelled(gestureDescription: GestureDescription?) {
                 super.onCancelled(gestureDescription)
-                // Jika dibatalkan sistem, tetap paksa coba jalankan target berikutnya agar tidak mogok total
-                if (isRunning) {
-                    mainHandler.postDelayed({
-                        executeSequenceLoop(coords, targetIdx + 1)
-                    }, clickSpeedMs)
-                }
+                // Jika dibatalkan sistem, jangan biarkan macet, paksa lanjut!
+                mainHandler.postDelayed({
+                    executeSequenceLoop(coords, targetIdx + 1)
+                }, clickSpeedMs)
             }
         }, null)
+
+        // 🔥 KUNCI PERBAIKAN: Jika Android menolak dispatch (return false),
+        // jalankan sekring pengaman untuk memaksa loop tetap jalan terus!
+        if (!isDispatched && isRunning) {
+            mainHandler.postDelayed({
+                executeSequenceLoop(coords, targetIdx + 1)
+            }, clickSpeedMs)
+        }
     }
 
     override fun onInterrupt() {
